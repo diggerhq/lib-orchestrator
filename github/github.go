@@ -2,12 +2,10 @@ package github
 
 import (
 	"context"
-	"digger/pkg/ci"
-	dg_models "digger/pkg/core/models"
-	"digger/pkg/core/orchestrator/github/models"
-	"digger/pkg/utils"
 	"fmt"
 	configuration "github.com/diggerhq/lib-digger-config"
+	orchestrator "github.com/diggerhq/lib-orchestrator"
+	"github.com/diggerhq/lib-orchestrator/github/models"
 	"log"
 	"strings"
 
@@ -67,11 +65,11 @@ func (svc *GithubService) PublishComment(prNumber int, comment string) error {
 	return err
 }
 
-func (svc *GithubService) GetComments(prNumber int) ([]ci.Comment, error) {
+func (svc *GithubService) GetComments(prNumber int) ([]orchestrator.Comment, error) {
 	comments, _, err := svc.Client.Issues.ListComments(context.Background(), svc.Owner, svc.RepoName, prNumber, &github.IssueListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}})
-	commentBodies := make([]ci.Comment, len(comments))
+	commentBodies := make([]orchestrator.Comment, len(comments))
 	for i, comment := range comments {
-		commentBodies[i] = ci.Comment{
+		commentBodies[i] = orchestrator.Comment{
 			Id:   *comment.ID,
 			Body: comment.Body,
 		}
@@ -170,8 +168,8 @@ func (svc *GithubService) IsClosed(prNumber int) (bool, error) {
 	return pr.GetState() == "closed", nil
 }
 
-func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]dg_models.Job, bool, error) {
-	jobs := make([]dg_models.Job, 0)
+func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
+	jobs := make([]orchestrator.Job, 0)
 
 	switch event := parsedGhContext.Event.(type) {
 	case github.PullRequestEvent:
@@ -184,14 +182,14 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 			stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 
 			if event.GetAction() == "closed" && *event.PullRequest.Merged && event.PullRequest.Base.Ref == event.Repo.DefaultBranch {
-				jobs = append(jobs, dg_models.Job{
+				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
 					ProjectWorkspace:  project.Workspace,
 					Terragrunt:        project.Terragrunt,
 					Commands:          workflow.Configuration.OnCommitToDefault,
-					ApplyStage:        workflow.Apply,
-					PlanStage:         workflow.Plan,
+					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
 					PullRequestNumber: event.PullRequest.Number,
@@ -200,14 +198,14 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					Namespace:         parsedGhContext.Repository,
 				})
 			} else if *event.Action == "opened" || *event.Action == "reopened" || *event.Action == "synchronize" {
-				jobs = append(jobs, dg_models.Job{
+				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
 					ProjectWorkspace:  project.Workspace,
 					Terragrunt:        project.Terragrunt,
 					Commands:          workflow.Configuration.OnPullRequestPushed,
-					ApplyStage:        workflow.Apply,
-					PlanStage:         workflow.Plan,
+					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
 					PullRequestNumber: event.PullRequest.Number,
@@ -216,14 +214,14 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					RequestedBy:       parsedGhContext.Actor,
 				})
 			} else if *event.Action == "closed" {
-				jobs = append(jobs, dg_models.Job{
+				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
 					ProjectWorkspace:  project.Workspace,
 					Terragrunt:        project.Terragrunt,
 					Commands:          workflow.Configuration.OnPullRequestClosed,
-					ApplyStage:        workflow.Apply,
-					PlanStage:         workflow.Plan,
+					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
 					PullRequestNumber: event.PullRequest.Number,
@@ -264,21 +262,21 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 
 					workspace := project.Workspace
-					workspaceOverride, err := utils.ParseWorkspace(*event.Comment.Body)
+					workspaceOverride, err := orchestrator.ParseWorkspace(*event.Comment.Body)
 					if err != nil {
-						return []dg_models.Job{}, false, err
+						return []orchestrator.Job{}, false, err
 					}
 					if workspaceOverride != "" {
 						workspace = workspaceOverride
 					}
-					jobs = append(jobs, dg_models.Job{
+					jobs = append(jobs, orchestrator.Job{
 						ProjectName:       project.Name,
 						ProjectDir:        project.Dir,
 						ProjectWorkspace:  workspace,
 						Terragrunt:        project.Terragrunt,
 						Commands:          []string{command},
-						ApplyStage:        workflow.Apply,
-						PlanStage:         workflow.Plan,
+						ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+						PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 						CommandEnvVars:    commandEnvVars,
 						StateEnvVars:      stateEnvVars,
 						PullRequestNumber: event.Issue.Number,
@@ -291,11 +289,11 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 		}
 		return jobs, coversAllImpactedProjects, nil
 	default:
-		return []dg_models.Job{}, false, fmt.Errorf("unsupported event type: %T", parsedGhContext.EventName)
+		return []orchestrator.Job{}, false, fmt.Errorf("unsupported event type: %T", parsedGhContext.EventName)
 	}
 }
 
-func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerConfig, ciService ci.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
 	var impactedProjects []configuration.Project
 	var prNumber int
 
@@ -318,7 +316,7 @@ func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerC
 		}
 
 		impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
-		requestedProject := utils.ParseProjectName(*event.Comment.Body)
+		requestedProject := orchestrator.ParseProjectName(*event.Comment.Body)
 
 		if requestedProject == "" {
 			return impactedProjects, nil, prNumber, nil
