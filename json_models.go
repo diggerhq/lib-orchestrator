@@ -6,7 +6,7 @@ type StepJson struct {
 }
 
 type StageJson struct {
-	Steps []Step `json:"steps"`
+	Steps []StepJson `json:"steps"`
 }
 
 type JobJson struct {
@@ -81,9 +81,9 @@ func stageToJson(stage *Stage) StageJson {
 	if stage == nil {
 		return StageJson{}
 	}
-	steps := make([]Step, len(stage.Steps))
+	steps := make([]StepJson, len(stage.Steps))
 	for i, step := range stage.Steps {
-		steps[i] = Step{
+		steps[i] = StepJson{
 			Action:    step.Action,
 			ExtraArgs: step.ExtraArgs,
 		}
