@@ -168,6 +168,15 @@ func (svc *GithubService) IsClosed(prNumber int) (bool, error) {
 	return pr.GetState() == "closed", nil
 }
 
+func (svc *GithubService) GetBranchName(prNumber int) (string, error) {
+	pr, _, err := svc.Client.PullRequests.Get(context.Background(), svc.Owner, svc.RepoName, prNumber)
+	if err != nil {
+		log.Fatalf("error getting pull request: %v", err)
+		return "", err
+	}
+	return pr.Head.GetRef(), nil
+}
+
 func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
 	jobs := make([]orchestrator.Job, 0)
 
