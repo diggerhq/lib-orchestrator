@@ -3,11 +3,12 @@ package github
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	configuration "github.com/diggerhq/lib-digger-config"
 	orchestrator "github.com/diggerhq/lib-orchestrator"
 	"github.com/diggerhq/lib-orchestrator/github/models"
-	"log"
-	"strings"
 
 	"github.com/google/go-github/v53/github"
 )
@@ -348,4 +349,8 @@ func issueCommentEventContainsComment(event interface{}, comment string) bool {
 
 func CheckIfHelpComment(event interface{}) bool {
 	return issueCommentEventContainsComment(event, "digger help")
+}
+
+func CheckIfShowProjectsComment(event interface{}) bool {
+	return issueCommentEventContainsComment(event, "digger show-projects")
 }
