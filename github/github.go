@@ -10,7 +10,7 @@ import (
 	orchestrator "github.com/diggerhq/lib-orchestrator"
 	"github.com/diggerhq/lib-orchestrator/github/models"
 
-	"github.com/google/go-github/v53/github"
+	"github.com/google/go-github/v54/github"
 )
 
 func NewGitHubService(ghToken string, repoName string, owner string) GithubService {
