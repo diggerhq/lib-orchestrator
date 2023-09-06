@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/diggerhq/lib-digger-config v0.0.0-20230824142939-83044a6a36df
 	github.com/google/go-github/v54 v54.0.0
+	github.com/google/go-github/v55 v55.0.0
 )
 
 require (
