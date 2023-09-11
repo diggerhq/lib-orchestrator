@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/diggerhq/lib-digger-config v0.0.3
+	github.com/diggerhq/webhooks v0.0.0-20230905113747-53e04148c435
 	github.com/google/go-github/v55 v55.0.0
 )
 

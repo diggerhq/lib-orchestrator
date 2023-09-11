@@ -9,6 +9,7 @@ import (
 	configuration "github.com/diggerhq/lib-digger-config"
 	orchestrator "github.com/diggerhq/lib-orchestrator"
 	"github.com/diggerhq/lib-orchestrator/github/models"
+	webhooks "github.com/diggerhq/webhooks/github"
 
 	"github.com/google/go-github/v55/github"
 )
@@ -343,6 +344,46 @@ func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerC
 		return nil, nil, 0, fmt.Errorf("unsupported event type")
 	}
 	return impactedProjects, nil, prNumber, nil
+}
+
+func ProcessGitHubPullRequestEvent(payload *webhooks.PullRequestPayload, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+	var impactedProjects []configuration.Project
+	var prNumber int
+	prNumber = int(payload.PullRequest.Number)
+	changedFiles, err := ciService.GetChangedFiles(prNumber)
+
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("could not get changed files")
+	}
+	impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
+
+	return impactedProjects, nil, prNumber, nil
+}
+
+func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+	var impactedProjects []configuration.Project
+	var prNumber int
+
+	prNumber = int(payload.Issue.Number)
+	changedFiles, err := ciService.GetChangedFiles(prNumber)
+
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("could not get changed files")
+	}
+
+	impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
+	requestedProject := orchestrator.ParseProjectName(payload.Issue.Body)
+
+	if requestedProject == "" {
+		return impactedProjects, nil, prNumber, nil
+	}
+
+	for _, project := range impactedProjects {
+		if project.Name == requestedProject {
+			return impactedProjects, &project, prNumber, nil
+		}
+	}
+	return nil, nil, 0, fmt.Errorf("requested project not found in modified projects")
 }
 
 func issueCommentEventContainsComment(event interface{}, comment string) bool {
