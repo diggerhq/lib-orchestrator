@@ -183,7 +183,7 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 	jobs := make([]orchestrator.Job, 0)
 
 	switch event := parsedGhContext.Event.(type) {
-	case github.PullRequestEvent:
+	case webhooks.PullRequestPayload:
 		for _, project := range impactedProjects {
 			workflow, ok := workflows[project.Workflow]
 			if !ok {
@@ -191,8 +191,9 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 			}
 
 			stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
+			pullRequestNumber := int(event.PullRequest.Number)
 
-			if event.GetAction() == "closed" && *event.PullRequest.Merged && event.PullRequest.Base.Ref == event.Repo.DefaultBranch {
+			if event.Action == "closed" && event.PullRequest.Merged && event.PullRequest.Base.Ref == event.Repository.DefaultBranch {
 				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
@@ -203,12 +204,12 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: event.PullRequest.Number,
+					PullRequestNumber: &pullRequestNumber,
 					EventName:         "pull_request",
 					RequestedBy:       parsedGhContext.Actor,
 					Namespace:         parsedGhContext.Repository,
 				})
-			} else if *event.Action == "opened" || *event.Action == "reopened" || *event.Action == "synchronize" {
+			} else if event.Action == "opened" || event.Action == "reopened" || event.Action == "synchronize" {
 				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
@@ -219,12 +220,12 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: event.PullRequest.Number,
+					PullRequestNumber: &pullRequestNumber,
 					EventName:         "pull_request",
 					Namespace:         parsedGhContext.Repository,
 					RequestedBy:       parsedGhContext.Actor,
 				})
-			} else if *event.Action == "closed" {
+			} else if event.Action == "closed" {
 				jobs = append(jobs, orchestrator.Job{
 					ProjectName:       project.Name,
 					ProjectDir:        project.Dir,
@@ -235,7 +236,7 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: event.PullRequest.Number,
+					PullRequestNumber: &pullRequestNumber,
 					EventName:         "pull_request",
 					Namespace:         parsedGhContext.Repository,
 					RequestedBy:       parsedGhContext.Actor,
@@ -243,7 +244,7 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 			}
 		}
 		return jobs, true, nil
-	case github.IssueCommentEvent:
+	case webhooks.IssueCommentPayload:
 		supportedCommands := []string{"digger plan", "digger apply", "digger unlock", "digger lock"}
 
 		coversAllImpactedProjects := true
@@ -259,7 +260,7 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 			}
 		}
 
-		diggerCommand := strings.ToLower(*event.Comment.Body)
+		diggerCommand := strings.ToLower(event.Comment.Body)
 		diggerCommand = strings.TrimSpace(diggerCommand)
 
 		for _, command := range supportedCommands {
@@ -269,11 +270,11 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 					if !ok {
 						return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
 					}
-
+					issueNumber := int(event.Issue.Number)
 					stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 
 					workspace := project.Workspace
-					workspaceOverride, err := orchestrator.ParseWorkspace(*event.Comment.Body)
+					workspaceOverride, err := orchestrator.ParseWorkspace(event.Comment.Body)
 					if err != nil {
 						return []orchestrator.Job{}, false, err
 					}
@@ -290,7 +291,7 @@ func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProje
 						PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 						CommandEnvVars:    commandEnvVars,
 						StateEnvVars:      stateEnvVars,
-						PullRequestNumber: event.Issue.Number,
+						PullRequestNumber: &issueNumber,
 						EventName:         "issue_comment",
 						RequestedBy:       parsedGhContext.Actor,
 						Namespace:         parsedGhContext.Repository,
@@ -372,7 +373,7 @@ func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, digge
 	}
 
 	impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
-	requestedProject := orchestrator.ParseProjectName(payload.Issue.Body)
+	requestedProject := orchestrator.ParseProjectName(payload.Comment.Body)
 
 	if requestedProject == "" {
 		return impactedProjects, nil, prNumber, nil
