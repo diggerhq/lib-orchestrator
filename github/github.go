@@ -8,7 +8,6 @@ import (
 
 	configuration "github.com/diggerhq/lib-digger-config"
 	orchestrator "github.com/diggerhq/lib-orchestrator"
-	"github.com/diggerhq/lib-orchestrator/github/models"
 	webhooks "github.com/diggerhq/webhooks/github"
 
 	"github.com/google/go-github/v55/github"
@@ -179,130 +178,129 @@ func (svc *GithubService) GetBranchName(prNumber int) (string, error) {
 	return pr.Head.GetRef(), nil
 }
 
-func ConvertGithubEventToJobs(parsedGhContext models.EventPackage, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
+func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
 	jobs := make([]orchestrator.Job, 0)
 
-	switch event := parsedGhContext.Event.(type) {
-	case webhooks.PullRequestPayload:
-		for _, project := range impactedProjects {
-			workflow, ok := workflows[project.Workflow]
-			if !ok {
-				return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
-			}
-
-			stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
-			pullRequestNumber := int(event.PullRequest.Number)
-
-			if event.Action == "closed" && event.PullRequest.Merged && event.PullRequest.Base.Ref == event.Repository.DefaultBranch {
-				jobs = append(jobs, orchestrator.Job{
-					ProjectName:       project.Name,
-					ProjectDir:        project.Dir,
-					ProjectWorkspace:  project.Workspace,
-					Terragrunt:        project.Terragrunt,
-					Commands:          workflow.Configuration.OnCommitToDefault,
-					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
-					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
-					CommandEnvVars:    commandEnvVars,
-					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: &pullRequestNumber,
-					EventName:         "pull_request",
-					RequestedBy:       parsedGhContext.Actor,
-					Namespace:         parsedGhContext.Repository,
-				})
-			} else if event.Action == "opened" || event.Action == "reopened" || event.Action == "synchronize" {
-				jobs = append(jobs, orchestrator.Job{
-					ProjectName:       project.Name,
-					ProjectDir:        project.Dir,
-					ProjectWorkspace:  project.Workspace,
-					Terragrunt:        project.Terragrunt,
-					Commands:          workflow.Configuration.OnPullRequestPushed,
-					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
-					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
-					CommandEnvVars:    commandEnvVars,
-					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: &pullRequestNumber,
-					EventName:         "pull_request",
-					Namespace:         parsedGhContext.Repository,
-					RequestedBy:       parsedGhContext.Actor,
-				})
-			} else if event.Action == "closed" {
-				jobs = append(jobs, orchestrator.Job{
-					ProjectName:       project.Name,
-					ProjectDir:        project.Dir,
-					ProjectWorkspace:  project.Workspace,
-					Terragrunt:        project.Terragrunt,
-					Commands:          workflow.Configuration.OnPullRequestClosed,
-					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
-					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
-					CommandEnvVars:    commandEnvVars,
-					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: &pullRequestNumber,
-					EventName:         "pull_request",
-					Namespace:         parsedGhContext.Repository,
-					RequestedBy:       parsedGhContext.Actor,
-				})
-			}
-		}
-		return jobs, true, nil
-	case webhooks.IssueCommentPayload:
-		supportedCommands := []string{"digger plan", "digger apply", "digger unlock", "digger lock"}
-
-		coversAllImpactedProjects := true
-
-		runForProjects := impactedProjects
-
-		if requestedProject != nil {
-			if len(impactedProjects) > 1 {
-				coversAllImpactedProjects = false
-				runForProjects = []configuration.Project{*requestedProject}
-			} else if len(impactedProjects) == 1 && impactedProjects[0].Name != requestedProject.Name {
-				return jobs, false, fmt.Errorf("requested project %v is not impacted by this PR", requestedProject.Name)
-			}
+	for _, project := range impactedProjects {
+		workflow, ok := workflows[project.Workflow]
+		if !ok {
+			return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
 		}
 
-		diggerCommand := strings.ToLower(event.Comment.Body)
-		diggerCommand = strings.TrimSpace(diggerCommand)
+		stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
+		pullRequestNumber := int(payload.PullRequest.Number)
 
-		for _, command := range supportedCommands {
-			if strings.HasPrefix(diggerCommand, command) {
-				for _, project := range runForProjects {
-					workflow, ok := workflows[project.Workflow]
-					if !ok {
-						return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
-					}
-					issueNumber := int(event.Issue.Number)
-					stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
-
-					workspace := project.Workspace
-					workspaceOverride, err := orchestrator.ParseWorkspace(event.Comment.Body)
-					if err != nil {
-						return []orchestrator.Job{}, false, err
-					}
-					if workspaceOverride != "" {
-						workspace = workspaceOverride
-					}
-					jobs = append(jobs, orchestrator.Job{
-						ProjectName:       project.Name,
-						ProjectDir:        project.Dir,
-						ProjectWorkspace:  workspace,
-						Terragrunt:        project.Terragrunt,
-						Commands:          []string{command},
-						ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
-						PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
-						CommandEnvVars:    commandEnvVars,
-						StateEnvVars:      stateEnvVars,
-						PullRequestNumber: &issueNumber,
-						EventName:         "issue_comment",
-						RequestedBy:       parsedGhContext.Actor,
-						Namespace:         parsedGhContext.Repository,
-					})
-				}
-			}
+		if payload.Action == "closed" && payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repository.DefaultBranch {
+			jobs = append(jobs, orchestrator.Job{
+				ProjectName:       project.Name,
+				ProjectDir:        project.Dir,
+				ProjectWorkspace:  project.Workspace,
+				Terragrunt:        project.Terragrunt,
+				Commands:          workflow.Configuration.OnCommitToDefault,
+				ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
+				CommandEnvVars:    commandEnvVars,
+				StateEnvVars:      stateEnvVars,
+				PullRequestNumber: &pullRequestNumber,
+				EventName:         "pull_request",
+				Namespace:         payload.Repository.Name,
+				RequestedBy:       payload.Sender.Login,
+			})
+		} else if payload.Action == "opened" || payload.Action == "reopened" || payload.Action == "synchronize" {
+			jobs = append(jobs, orchestrator.Job{
+				ProjectName:       project.Name,
+				ProjectDir:        project.Dir,
+				ProjectWorkspace:  project.Workspace,
+				Terragrunt:        project.Terragrunt,
+				Commands:          workflow.Configuration.OnPullRequestPushed,
+				ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
+				CommandEnvVars:    commandEnvVars,
+				StateEnvVars:      stateEnvVars,
+				PullRequestNumber: &pullRequestNumber,
+				EventName:         "pull_request",
+				Namespace:         payload.Repository.Name,
+				RequestedBy:       payload.Sender.Login,
+			})
+		} else if payload.Action == "closed" {
+			jobs = append(jobs, orchestrator.Job{
+				ProjectName:       project.Name,
+				ProjectDir:        project.Dir,
+				ProjectWorkspace:  project.Workspace,
+				Terragrunt:        project.Terragrunt,
+				Commands:          workflow.Configuration.OnPullRequestClosed,
+				ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
+				CommandEnvVars:    commandEnvVars,
+				StateEnvVars:      stateEnvVars,
+				PullRequestNumber: &pullRequestNumber,
+				EventName:         "pull_request",
+				Namespace:         payload.Repository.Name,
+				RequestedBy:       payload.Sender.Login,
+			})
 		}
-		return jobs, coversAllImpactedProjects, nil
-	default:
-		return []orchestrator.Job{}, false, fmt.Errorf("unsupported event type: %T", parsedGhContext.EventName)
 	}
+	return jobs, true, nil
+}
+
+func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
+	jobs := make([]orchestrator.Job, 0)
+
+	supportedCommands := []string{"digger plan", "digger apply", "digger unlock", "digger lock"}
+
+	coversAllImpactedProjects := true
+
+	runForProjects := impactedProjects
+
+	if requestedProject != nil {
+		if len(impactedProjects) > 1 {
+			coversAllImpactedProjects = false
+			runForProjects = []configuration.Project{*requestedProject}
+		} else if len(impactedProjects) == 1 && impactedProjects[0].Name != requestedProject.Name {
+			return jobs, false, fmt.Errorf("requested project %v is not impacted by this PR", requestedProject.Name)
+		}
+	}
+
+	diggerCommand := strings.ToLower(payload.Comment.Body)
+	diggerCommand = strings.TrimSpace(diggerCommand)
+
+	for _, command := range supportedCommands {
+		if strings.HasPrefix(diggerCommand, command) {
+			for _, project := range runForProjects {
+				workflow, ok := workflows[project.Workflow]
+				if !ok {
+					return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
+				}
+				issueNumber := int(payload.Issue.Number)
+				stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
+
+				workspace := project.Workspace
+				workspaceOverride, err := orchestrator.ParseWorkspace(payload.Comment.Body)
+				if err != nil {
+					return []orchestrator.Job{}, false, err
+				}
+				if workspaceOverride != "" {
+					workspace = workspaceOverride
+				}
+				jobs = append(jobs, orchestrator.Job{
+					ProjectName:       project.Name,
+					ProjectDir:        project.Dir,
+					ProjectWorkspace:  workspace,
+					Terragrunt:        project.Terragrunt,
+					Commands:          []string{command},
+					ApplyStage:        orchestrator.ToConfigStage(workflow.Apply),
+					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
+					CommandEnvVars:    commandEnvVars,
+					StateEnvVars:      stateEnvVars,
+					PullRequestNumber: &issueNumber,
+					EventName:         "issue_comment",
+					Namespace:         payload.Repository.Name,
+					RequestedBy:       payload.Sender.Login,
+				})
+			}
+		}
+	}
+	return jobs, coversAllImpactedProjects, nil
 }
 
 func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
