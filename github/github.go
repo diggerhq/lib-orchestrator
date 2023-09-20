@@ -203,7 +203,7 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				StateEnvVars:      stateEnvVars,
 				PullRequestNumber: &pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.Name,
+				Namespace:         payload.Repository.FullName,
 				RequestedBy:       payload.Sender.Login,
 			})
 		} else if payload.Action == "opened" || payload.Action == "reopened" || payload.Action == "synchronize" {
@@ -219,7 +219,7 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				StateEnvVars:      stateEnvVars,
 				PullRequestNumber: &pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.Name,
+				Namespace:         payload.Repository.FullName,
 				RequestedBy:       payload.Sender.Login,
 			})
 		} else if payload.Action == "closed" {
@@ -235,7 +235,7 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				StateEnvVars:      stateEnvVars,
 				PullRequestNumber: &pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.Name,
+				Namespace:         payload.Repository.FullName,
 				RequestedBy:       payload.Sender.Login,
 			})
 		}
@@ -294,7 +294,7 @@ func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload,
 					StateEnvVars:      stateEnvVars,
 					PullRequestNumber: &issueNumber,
 					EventName:         "issue_comment",
-					Namespace:         payload.Repository.Name,
+					Namespace:         payload.Repository.FullName,
 					RequestedBy:       payload.Sender.Login,
 				})
 			}
