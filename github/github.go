@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"github.com/dominikbraun/graph"
 	"log"
 	"strings"
 
@@ -345,21 +346,76 @@ func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerC
 	return impactedProjects, nil, prNumber, nil
 }
 
-func ProcessGitHubPullRequestEvent(payload *webhooks.PullRequestPayload, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+func ProcessGitHubPullRequestEvent(payload *webhooks.PullRequestPayload, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, int, error) {
 	var impactedProjects []configuration.Project
 	var prNumber int
 	prNumber = int(payload.PullRequest.Number)
 	changedFiles, err := ciService.GetChangedFiles(prNumber)
 
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("could not get changed files")
+		return nil, prNumber, fmt.Errorf("could not get changed files")
 	}
 	impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
 
-	return impactedProjects, nil, prNumber, nil
+	if diggerConfig.DependencyConfiguration.Mode == configuration.DependencyConfigurationHard {
+		impactedProjects, err = FindAllProjectsDependantOnImpactedProjects(impactedProjects, dependencyGraph)
+		if err != nil {
+			return nil, prNumber, fmt.Errorf("failed to find all projects dependant on impacted projects")
+		}
+	}
+
+	return impactedProjects, prNumber, nil
 }
 
-func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, diggerConfig *configuration.DiggerConfig, ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+func FindAllProjectsDependantOnImpactedProjects(impactedProjects []configuration.Project, dependencyGraph graph.Graph[string, configuration.Project]) ([]configuration.Project, error) {
+	impactedProjectsMap := make(map[string]configuration.Project)
+	for _, project := range impactedProjects {
+		impactedProjectsMap[project.Name] = project
+	}
+	visited := make(map[string]bool)
+	predecessorMap, err := dependencyGraph.PredecessorMap()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get predecessor map")
+	}
+	impactedProjectsWithDependantProjects := make([]configuration.Project, 0)
+	for currentNode := range predecessorMap {
+		// find all roots of the graph
+		if len(predecessorMap[currentNode]) == 0 {
+			err := graph.BFS(dependencyGraph, currentNode, func(node string) bool {
+				currentProject, err := dependencyGraph.Vertex(node)
+				if err != nil {
+					return true
+				}
+				if _, ok := visited[node]; ok {
+					return true
+				}
+				// add a project if it was impacted
+				if _, ok := impactedProjectsMap[node]; ok {
+					impactedProjectsWithDependantProjects = append(impactedProjectsWithDependantProjects, currentProject)
+					visited[node] = true
+					return false
+				} else {
+					// if a project was not impacted, check if it has a parent that was impacted and add it to the map of impacted projects
+					for parent := range predecessorMap[node] {
+						if _, ok := impactedProjectsMap[parent]; ok {
+							impactedProjectsWithDependantProjects = append(impactedProjectsWithDependantProjects, currentProject)
+							impactedProjectsMap[node] = currentProject
+							visited[node] = true
+							return false
+						}
+					}
+				}
+				return true
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return impactedProjectsWithDependantProjects, nil
+}
+
+func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
 	var impactedProjects []configuration.Project
 	var prNumber int
 
@@ -371,6 +427,14 @@ func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, digge
 	}
 
 	impactedProjects = diggerConfig.GetModifiedProjects(changedFiles)
+
+	if diggerConfig.DependencyConfiguration.Mode == configuration.DependencyConfigurationHard {
+		impactedProjects, err = FindAllProjectsDependantOnImpactedProjects(impactedProjects, dependencyGraph)
+		if err != nil {
+			return nil, nil, prNumber, fmt.Errorf("failed to find all projects dependant on impacted projects")
+		}
+	}
+
 	requestedProject := orchestrator.ParseProjectName(payload.Comment.Body)
 
 	if requestedProject == "" {
