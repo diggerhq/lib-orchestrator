@@ -5,7 +5,9 @@ go 1.20
 require (
 	github.com/diggerhq/lib-digger-config v0.0.6
 	github.com/diggerhq/webhooks v0.0.0-20230905113747-53e04148c435
+	github.com/dominikbraun/graph v0.23.0
 	github.com/google/go-github/v55 v55.0.0
+	github.com/stretchr/testify v1.8.4
 )
 
 require (
@@ -45,7 +47,6 @@ require (
 	github.com/creack/pty v1.1.11 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
-	github.com/dominikbraun/graph v0.23.0 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
@@ -120,7 +121,6 @@ require (
 	github.com/sourcegraph/go-lsp v0.0.0-20200429204803-219e11d77f5d // indirect
 	github.com/sourcegraph/jsonrpc2 v0.2.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/terraform-linters/tflint v0.47.0 // indirect
 	github.com/terraform-linters/tflint-plugin-sdk v0.17.0 // indirect
 	github.com/terraform-linters/tflint-ruleset-terraform v0.4.0 // indirect
