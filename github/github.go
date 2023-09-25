@@ -9,8 +9,6 @@ import (
 
 	configuration "github.com/diggerhq/lib-digger-config"
 	orchestrator "github.com/diggerhq/lib-orchestrator"
-	webhooks "github.com/diggerhq/webhooks/github"
-
 	"github.com/google/go-github/v55/github"
 )
 
@@ -179,7 +177,7 @@ func (svc *GithubService) GetBranchName(prNumber int) (string, error) {
 	return pr.Head.GetRef(), nil
 }
 
-func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
+func ConvertGithubPullRequestEventToJobs(payload *github.PullRequestEvent, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
 	jobs := make([]orchestrator.Job, 0)
 
 	for _, project := range impactedProjects {
@@ -189,9 +187,9 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 		}
 
 		stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
-		pullRequestNumber := int(payload.PullRequest.Number)
+		pullRequestNumber := payload.PullRequest.Number
 
-		if payload.Action == "closed" && payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repository.DefaultBranch {
+		if payload.Action == github.String("closed") && *payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repo.DefaultBranch {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
@@ -202,12 +200,12 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 				CommandEnvVars:    commandEnvVars,
 				StateEnvVars:      stateEnvVars,
-				PullRequestNumber: &pullRequestNumber,
+				PullRequestNumber: pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.FullName,
-				RequestedBy:       payload.Sender.Login,
+				Namespace:         *payload.Repo.FullName,
+				RequestedBy:       *payload.Sender.Login,
 			})
-		} else if payload.Action == "opened" || payload.Action == "reopened" || payload.Action == "synchronize" {
+		} else if payload.Action == github.String("opened") || payload.Action == github.String("reopened") || payload.Action == github.String("synchronize") {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
@@ -218,12 +216,12 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 				CommandEnvVars:    commandEnvVars,
 				StateEnvVars:      stateEnvVars,
-				PullRequestNumber: &pullRequestNumber,
+				PullRequestNumber: pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.FullName,
-				RequestedBy:       payload.Sender.Login,
+				Namespace:         *payload.Repo.FullName,
+				RequestedBy:       *payload.Sender.Login,
 			})
-		} else if payload.Action == "closed" {
+		} else if payload.Action == github.String("closed") {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
@@ -234,17 +232,17 @@ func ConvertGithubPullRequestEventToJobs(payload *webhooks.PullRequestPayload, i
 				PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 				CommandEnvVars:    commandEnvVars,
 				StateEnvVars:      stateEnvVars,
-				PullRequestNumber: &pullRequestNumber,
+				PullRequestNumber: pullRequestNumber,
 				EventName:         "pull_request",
-				Namespace:         payload.Repository.FullName,
-				RequestedBy:       payload.Sender.Login,
+				Namespace:         *payload.Repo.FullName,
+				RequestedBy:       *payload.Sender.Login,
 			})
 		}
 	}
 	return jobs, true, nil
 }
 
-func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
+func ConvertGithubIssueCommentEventToJobs(payload *github.IssueCommentEvent, impactedProjects []configuration.Project, requestedProject *configuration.Project, workflows map[string]configuration.Workflow) ([]orchestrator.Job, bool, error) {
 	jobs := make([]orchestrator.Job, 0)
 
 	supportedCommands := []string{"digger plan", "digger apply", "digger unlock", "digger lock"}
@@ -262,7 +260,7 @@ func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload,
 		}
 	}
 
-	diggerCommand := strings.ToLower(payload.Comment.Body)
+	diggerCommand := strings.ToLower(*payload.Comment.Body)
 	diggerCommand = strings.TrimSpace(diggerCommand)
 
 	for _, command := range supportedCommands {
@@ -272,11 +270,11 @@ func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload,
 				if !ok {
 					return nil, false, fmt.Errorf("failed to find workflow config '%s' for project '%s'", project.Workflow, project.Name)
 				}
-				issueNumber := int(payload.Issue.Number)
+				issueNumber := payload.Issue.Number
 				stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 
 				workspace := project.Workspace
-				workspaceOverride, err := orchestrator.ParseWorkspace(payload.Comment.Body)
+				workspaceOverride, err := orchestrator.ParseWorkspace(*payload.Comment.Body)
 				if err != nil {
 					return []orchestrator.Job{}, false, err
 				}
@@ -293,10 +291,10 @@ func ConvertGithubIssueCommentEventToJobs(payload *webhooks.IssueCommentPayload,
 					PlanStage:         orchestrator.ToConfigStage(workflow.Plan),
 					CommandEnvVars:    commandEnvVars,
 					StateEnvVars:      stateEnvVars,
-					PullRequestNumber: &issueNumber,
+					PullRequestNumber: issueNumber,
 					EventName:         "issue_comment",
-					Namespace:         payload.Repository.FullName,
-					RequestedBy:       payload.Sender.Login,
+					Namespace:         *payload.Repo.FullName,
+					RequestedBy:       *payload.Sender.Login,
 				})
 			}
 		}
@@ -346,10 +344,10 @@ func ProcessGitHubEvent(ghEvent interface{}, diggerConfig *configuration.DiggerC
 	return impactedProjects, nil, prNumber, nil
 }
 
-func ProcessGitHubPullRequestEvent(payload *webhooks.PullRequestPayload, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, int, error) {
+func ProcessGitHubPullRequestEvent(payload *github.PullRequestEvent, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, int, error) {
 	var impactedProjects []configuration.Project
 	var prNumber int
-	prNumber = int(payload.PullRequest.Number)
+	prNumber = *payload.PullRequest.Number
 	changedFiles, err := ciService.GetChangedFiles(prNumber)
 
 	if err != nil {
@@ -415,11 +413,11 @@ func FindAllProjectsDependantOnImpactedProjects(impactedProjects []configuration
 	return impactedProjectsWithDependantProjects, nil
 }
 
-func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
+func ProcessGitHubIssueCommentEvent(payload *github.IssueCommentEvent, diggerConfig *configuration.DiggerConfig, dependencyGraph graph.Graph[string, configuration.Project], ciService orchestrator.PullRequestService) ([]configuration.Project, *configuration.Project, int, error) {
 	var impactedProjects []configuration.Project
 	var prNumber int
 
-	prNumber = int(payload.Issue.Number)
+	prNumber = *payload.Issue.Number
 	changedFiles, err := ciService.GetChangedFiles(prNumber)
 
 	if err != nil {
@@ -435,7 +433,7 @@ func ProcessGitHubIssueCommentEvent(payload *webhooks.IssueCommentPayload, digge
 		}
 	}
 
-	requestedProject := orchestrator.ParseProjectName(payload.Comment.Body)
+	requestedProject := orchestrator.ParseProjectName(*payload.Comment.Body)
 
 	if requestedProject == "" {
 		return impactedProjects, nil, prNumber, nil
