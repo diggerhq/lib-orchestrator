@@ -189,7 +189,7 @@ func ConvertGithubPullRequestEventToJobs(payload *github.PullRequestEvent, impac
 		stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 		pullRequestNumber := payload.PullRequest.Number
 
-		if payload.Action == github.String("closed") && *payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repo.DefaultBranch {
+		if *payload.Action == "closed" && *payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repo.DefaultBranch {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
@@ -205,7 +205,7 @@ func ConvertGithubPullRequestEventToJobs(payload *github.PullRequestEvent, impac
 				Namespace:         *payload.Repo.FullName,
 				RequestedBy:       *payload.Sender.Login,
 			})
-		} else if payload.Action == github.String("opened") || payload.Action == github.String("reopened") || payload.Action == github.String("synchronize") {
+		} else if *payload.Action == "opened" || *payload.Action == "reopened" || *payload.Action == "synchronize" {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
@@ -221,7 +221,7 @@ func ConvertGithubPullRequestEventToJobs(payload *github.PullRequestEvent, impac
 				Namespace:         *payload.Repo.FullName,
 				RequestedBy:       *payload.Sender.Login,
 			})
-		} else if payload.Action == github.String("closed") {
+		} else if *payload.Action == "closed" {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
