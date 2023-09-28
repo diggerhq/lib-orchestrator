@@ -189,7 +189,7 @@ func ConvertGithubPullRequestEventToJobs(payload *github.PullRequestEvent, impac
 		stateEnvVars, commandEnvVars := configuration.CollectTerraformEnvConfig(workflow.EnvVars)
 		pullRequestNumber := payload.PullRequest.Number
 
-		if *payload.Action == "closed" && *payload.PullRequest.Merged && payload.PullRequest.Base.Ref == payload.Repo.DefaultBranch {
+		if *payload.Action == "closed" && *payload.PullRequest.Merged && *(payload.PullRequest.Base).Ref == *(payload.Repo).DefaultBranch {
 			jobs = append(jobs, orchestrator.Job{
 				ProjectName:       project.Name,
 				ProjectDir:        project.Dir,
