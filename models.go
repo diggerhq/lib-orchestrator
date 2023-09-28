@@ -6,6 +6,7 @@ type Job struct {
 	ProjectName       string
 	ProjectDir        string
 	ProjectWorkspace  string
+	ProjectWorkflow   string
 	Terragrunt        bool
 	Commands          []string
 	ApplyStage        *Stage
