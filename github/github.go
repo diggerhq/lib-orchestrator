@@ -77,7 +77,7 @@ func (svc *GithubService) GetComments(prNumber int) ([]orchestrator.Comment, err
 	return commentBodies, err
 }
 
-func (svc *GithubService) EditComment(id interface{}, comment string) error {
+func (svc *GithubService) EditComment(prNumber int, id interface{}, comment string) error {
 	commentId := id.(int64)
 	_, _, err := svc.Client.Issues.EditComment(context.Background(), svc.Owner, svc.RepoName, commentId, &github.IssueComment{Body: &comment})
 	return err
