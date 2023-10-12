@@ -6,6 +6,7 @@ require (
 	github.com/diggerhq/lib-digger-config v0.0.7
 	github.com/dominikbraun/graph v0.23.0
 	github.com/google/go-github/v55 v55.0.0
+	github.com/google/go-github/v56 v56.0.0
 	github.com/stretchr/testify v1.8.4
 )
 
